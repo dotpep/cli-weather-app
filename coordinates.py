@@ -1,4 +1,3 @@
-# from subprocess import Popen, PIPE, STDOUT
 import subprocess
 import time
 from typing import NamedTuple
@@ -10,6 +9,19 @@ from exceptions import CantGetCoordinates
 class Coordinates(NamedTuple):
     latitude: float
     longitude: float
+
+
+def get_gps_coordinates() -> Coordinates:
+    wait_time = 0
+    accuracy = 3
+
+    powershell_outputs = _get_gps_data_from_powershell(wait_time, accuracy)
+    current_coordinates = _parse_coordinate(powershell_outputs)
+
+    if config.USE_ROUNDED_COORS:
+        return _round_coordinates(current_coordinates)
+
+    return current_coordinates
 
 
 def _get_gps_data_from_powershell(wait_time: int, accuracy: int) -> list:
@@ -41,10 +53,10 @@ def _get_gps_data_from_powershell(wait_time: int, accuracy: int) -> list:
     return [item.strip() for item in process_outputs.split('\n')]
 
 
-def _round_coordinates(coordinates: Coordinates, round_coors_digits: int) -> Coordinates:
-    return coordinates._replace(  # Coordinates
-        latitude=round(coordinates.latitude, round_coors_digits),
-        longitude=round(coordinates.longitude, round_coors_digits)
+def _round_coordinates(coordinates: Coordinates) -> Coordinates:
+    return coordinates._replace(  # replace Coordinates
+        latitude=round(coordinates.latitude, 2),  # minimum rounded decimal value must equal to 2
+        longitude=round(coordinates.longitude, 2)  # else OpenWeatherAPI may return incorrect address, city
     )
 
 
@@ -61,20 +73,7 @@ def _parse_coordinate(outputs: list) -> Coordinates:
     return Coordinates(latitude=latitude, longitude=longitude)
 
 
-def get_gps_coordinates() -> Coordinates:
-    wait_time = 0
-    accuracy = 3
-
-    powershell_outputs = _get_gps_data_from_powershell(wait_time, accuracy)
-    current_coordinates = _parse_coordinate(powershell_outputs)
-
-    if config.USE_ROUNDED_COORS:
-        return _round_coordinates(current_coordinates, config.ROUND_COORS_DIGITS)
-
-    return current_coordinates
-
-
 if __name__ == "__main__":
     coordination = get_gps_coordinates()
-    print(coordination.latitude)
-    print(coordination.longitude)
+    print("Coordinate latitude: ", coordination.latitude)
+    print("Coordinate longitude: ", coordination.longitude)

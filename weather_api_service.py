@@ -1,9 +1,16 @@
 from datetime import datetime
-from enum import Enum
-from typing import NamedTuple
-from typing import TypeAlias
+import json
+# from json.decoder import JSONDecodeError
+# import ssl
+import urllib.request
+# from urllib.error import URLError
 
+from enum import Enum
+from typing import Literal, NamedTuple, TypeAlias
+
+import config
 from coordinates import Coordinates
+# from exceptions import ApiServiceError
 
 Celsius: TypeAlias = int
 
@@ -28,10 +35,31 @@ class Weather(NamedTuple):
 
 def get_weather(coordinates: Coordinates) -> Weather:
     """Requests weather in OpenWeatherMap API and returns it"""
-    return Weather(
-        temperature=20,
-        weather_type=WeatherType.CLEAR,
-        sunrise=datetime.fromisoformat("2022-05-04 04:00:00"),
-        sunset=datetime.fromisoformat("2022-05-04 20:25:00"),
-        city="Moscow"
+    lat, lon = coordinates
+
+    url = config.OPENWEATHER_URL_TEMPLATE.format(
+        latitude=lat, longitude=lon
     )
+
+    openweather_response = urllib.request.urlopen(url).read()
+    openweather_dict = json.loads(openweather_response)
+
+    temperature = openweather_dict["main"]["temp"]
+    weather_type = openweather_dict["weather"][0]["id"]
+    # sunrise = openweather_dict["sys"]["sunrise"]
+    # sunset = openweather_dict["sys"]["sunset"]
+    sunrise = datetime.fromtimestamp(openweather_dict["sys"]["sunrise"])
+    sunset = datetime.fromtimestamp(openweather_dict["sys"]["sunset"])
+    city = openweather_dict["name"]
+
+    return Weather(
+        temperature=temperature,
+        weather_type=weather_type,
+        sunrise=sunrise,
+        sunset=sunset,
+        city=city,
+    )
+
+
+if __name__ == "__main__":
+    print(get_weather(Coordinates(latitude=55.75, longitude=37.65)))
