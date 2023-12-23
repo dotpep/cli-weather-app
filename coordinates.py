@@ -1,8 +1,10 @@
-import re
-import subprocess as sp
+# from subprocess import Popen, PIPE, STDOUT
+import subprocess
 import time
-
 from typing import NamedTuple
+
+import config
+from exceptions import CantGetCoordinates
 
 
 class Coordinates(NamedTuple):
@@ -10,40 +12,69 @@ class Coordinates(NamedTuple):
     longitude: float
 
 
-def get_coordinates() -> Coordinates:
-    """Returns current coordinates using Windows GPS Location"""
-    wt = 5  # Wait time -- I purposefully make it wait before the shell command
-    accuracy = 3  # Starting desired accuracy is fine and builds at x1.5 per loop
+def _get_gps_data_from_powershell(wait_time: int, accuracy: int) -> list:
+    time.sleep(wait_time)
+    powershell_command = [
+        'powershell',
+        'add-type -assemblyname system.device; '
+        '$loc = new-object system.device.location.geocoordinatewatcher;'
+        '$loc.start(); '
+        'while(($loc.status -ne "Ready") -and ($loc.permission -ne "Denied")) '
+        '{start-sleep -milliseconds 100}; '
+        '$acc = %d; '
+        'while($loc.position.location.horizontalaccuracy -gt $acc) '
+        '{start-sleep -milliseconds 100; $acc = [math]::Round($acc*1.5)}; '
+        '$loc.position.location.latitude; '
+        '$loc.position.location.longitude; '
+        '$loc.position.location.horizontalaccuracy; '
+        '$loc.stop()' % (accuracy)
+    ]
 
-    while True:
-        time.sleep(wt)
-        pshellcomm = ['powershell']
-        pshellcomm.append('add-type -assemblyname system.device; ' \
-                          '$loc = new-object system.device.location.geocoordinatewatcher;' \
-                          '$loc.start(); ' \
-                          'while(($loc.status -ne "Ready") -and ($loc.permission -ne "Denied")) ' \
-                          '{start-sleep -milliseconds 100}; ' \
-                          '$acc = %d; ' \
-                          'while($loc.position.location.horizontalaccuracy -gt $acc) ' \
-                          '{start-sleep -milliseconds 100; $acc = [math]::Round($acc*1.5)}; ' \
-                          '$loc.position.location.latitude; ' \
-                          '$loc.position.location.longitude; ' \
-                          '$loc.position.location.horizontalaccuracy; ' \
-                          '$loc.stop()' % (accuracy))
+    process_outputs, _ = subprocess.Popen(
+        powershell_command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
+    ).communicate()
 
-        # Remove >>> $acc = [math]::Round($acc*1.5) <<< to remove accuracy builder
-        # Once removed, try setting accuracy = 10, 20, 50, 100, 1000 to see if that affects the results
-        # Note: This code will hang if your desired accuracy is too fine for your device
-        # Note: This code will hang if you interact with the Command Prompt AT ALL
-        # Try pressing ESC or CTRL-C once if you interacted with the CMD,
-        # this might allow the process to continue
+    return [item.strip() for item in process_outputs.split('\n')]
 
-        p = sp.Popen(pshellcomm, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.STDOUT, text=True)
-        (out, err) = p.communicate()
-        out = re.split('\n', out)
 
-        latitude: float = float(out[0])
-        longitude: float = float(out[1])
-        radius: int = int(out[2])
+def _round_coordinates(coordinates: Coordinates, round_coors_digits: int) -> Coordinates:
+    return coordinates._replace(  # Coordinates
+        latitude=round(coordinates.latitude, round_coors_digits),
+        longitude=round(coordinates.longitude, round_coors_digits)
+    )
 
-        return Coordinates(latitude, longitude)
+
+def _parse_coordinate(outputs: list) -> Coordinates:
+    if any(item in {'NaN', None} for item in outputs):
+        raise CantGetCoordinates("Unable to retrieve GPS data. Check if GPS is enabled on your device.")
+    try:
+        latitude: float = float(outputs[0])
+        longitude: float = float(outputs[1])
+        radius: int = int(outputs[2])
+    except (ValueError, IndexError):
+        raise CantGetCoordinates
+
+    return Coordinates(latitude=latitude, longitude=longitude)
+
+
+def get_gps_coordinates() -> Coordinates:
+    wait_time = 0
+    accuracy = 3
+
+    powershell_outputs = _get_gps_data_from_powershell(wait_time, accuracy)
+    current_coordinates = _parse_coordinate(powershell_outputs)
+
+    if config.USE_ROUNDED_COORS:
+        return _round_coordinates(current_coordinates, config.ROUND_COORS_DIGITS)
+
+    return current_coordinates
+
+
+if __name__ == "__main__":
+    coordination = get_gps_coordinates()
+    print(coordination.latitude)
+    print(coordination.longitude)

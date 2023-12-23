@@ -1,0 +1,2 @@
+USE_ROUNDED_COORS: bool = True
+ROUND_COORS_DIGITS: int = 1
