@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.10
+#!/usr/bin/env python
 from coordinates import get_gps_coordinates
 from weather_api_service import get_weather
 from weather_formatter import format_weather

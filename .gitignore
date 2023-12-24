@@ -2,3 +2,5 @@ env
 .idea
 __pycache__
 test_usage_examples
+history.txt
+history.json
